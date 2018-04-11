@@ -1,8 +1,8 @@
 ﻿using CQRSlite.Domain;
 using CQRSlite.Events;
 using MassTransit;
+using MassTransit.ConsumeConfigurators;
 using MassTransit.ExtensionsDependencyInjectionIntegration;
-using MassTransit.MongoDbIntegration.Saga;
 using MassTransit.RabbitMqTransport;
 using MassTransit.Saga;
 using MassTransit.Scoping;
@@ -39,17 +39,14 @@ namespace MassTransitCqrsLite
             services.AddScoped<ISession, Session>();
             services.AddScoped<IRepository, Repository>();
 
-            services.AddMassTransit(x =>
-            {
-                x.AddConsumer<CreateRecordConsumer>();
-                x.AddConsumer<RecordProcessedConsumer>();
-                //x.AddSaga<TestState>();
-            });
+            services.AddScoped<CreateRecordConsumer>();
+            services.AddScoped<RecordProcessedConsumer>();
+
+            services.AddSingleton<IConsumerScopeProvider, DependencyInjectionConsumerScopeProvider>();
 
             services.AddSingleton<TestStateMachine>();
 
-            var repository = new MongoDbSagaRepository<TestState>("mongodb://localhost:27017/test", "sagas");
-            services.AddSingleton<ISagaRepository<TestState>>(repository);
+            services.AddSingleton<ISagaRepository<TestState>>(new InMemorySagaRepository<TestState>());
 
             services.AddTransient(context => Bus.Factory.CreateUsingRabbitMq(x =>
             {
@@ -57,15 +54,12 @@ namespace MassTransitCqrsLite
 
                 x.ReceiveEndpoint(host, $"receiver_saga_queue", e =>
                 {
-                    e.UseInMemoryOutbox();
-                    e.StateMachineSaga(container.GetService<TestStateMachine>(), repository);
+                    e.StateMachineSaga(container.GetRequiredService<TestStateMachine>(), container.GetRequiredService<ISagaRepository<TestState>>());
                 });
 
                 x.ReceiveEndpoint(host, $"receiver_queue", e =>
                 {
-                    var scopeProvider = new DependencyInjectionConsumerScopeProvider(container);
-
-                    e.Consumer(new ScopeConsumerFactory<CreateRecordConsumer>(scopeProvider), cfg => cfg.UseCqrsLite());
+                    e.ScopedConsumer<CreateRecordConsumer>(container, cfg => cfg.UseCqrsLite());
                     e.Consumer(container.GetRequiredService<RecordProcessedConsumer>);
                 });
 
@@ -80,7 +74,7 @@ namespace MassTransitCqrsLite
 
             Log.Information("Receiver started...");
 
-            for (var i = 0; i < 2; i++)
+            for (var i = 0; i < 10; i++)
             {
                 busControl.Publish<ProcessRecord>(new
                 {
@@ -88,6 +82,14 @@ namespace MassTransitCqrsLite
                     Index = i
                 });
             }
+        }
+    }
+
+    public static class ConsumerExtensions
+    {
+        public static void ScopedConsumer<TConsumer>(this IReceiveEndpointConfigurator configurator, IServiceProvider container, Action<IConsumerConfigurator<TConsumer>> configure = null) where TConsumer : class, IConsumer
+        {
+            configurator.Consumer(new ScopeConsumerFactory<TConsumer>(container.GetRequiredService<IConsumerScopeProvider>()), configure);
         }
     }
 }
