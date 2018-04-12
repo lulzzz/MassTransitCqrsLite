@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CqrsLite" Version="0.14.3" />
+    <PackageReference Include="MassTransit" Version="4.1.0.1450-develop" />
+    <PackageReference Include="MassTransit.Automatonymous" Version="4.1.0.1450-develop" />
+    <PackageReference Include="MassTransit.MongoDb" Version="4.1.0.1450-develop" />
+    <PackageReference Include="Serilog" Version="2.6.0" />
+  </ItemGroup>
+
+</Project>
